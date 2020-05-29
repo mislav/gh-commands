@@ -1,0 +1,60 @@
+#!/bin/bash
+# Manage GitHub CLI command extensions
+set -eu
+
+cmd="${1:-}"
+
+if [ "$cmd" = "__complete" ]; then
+  printf "list\tList installed extensions\n"
+  printf "install\tInstall extensions from a GitHub user\n"
+  printf "update\tUpdate installed extensions\n"
+  printf "rm\tUninstall an extension\n"
+  exit 0
+fi
+
+INSTALL_DIR=~/.config/gh/gh-commands
+
+list() {
+  local dir exe name
+  for dir in "$INSTALL_DIR"/*; do
+    echo "$(basename "$dir")"
+    for exe in "$dir"/gh-*; do
+      name="$(basename "${exe}")"
+      printf "    %s\n" "${name/-/ }"
+    done
+  done
+}
+
+install() {
+  local username="${1?}"
+  gh repo clone "${username}/gh-commands" "${INSTALL_DIR}/${username}"
+}
+
+update() {
+  local dir
+  for dir in "$INSTALL_DIR"/*; do
+    git -C "$dir" pull
+  done
+}
+
+rm() {
+  local username="${1?}"
+  rm -rf "${INSTALL_DIR}/${username}"
+}
+
+case "$cmd" in
+list | install | update | rm )
+  shift 1
+  "$cmd" "$@"
+  ;;
+* )
+  cat <<EOM >&2
+usage:
+  gh extensions list
+  gh extensions install <username>
+  gh extensions update
+  gh extensions rm <username>
+EOM
+  exit 1
+  ;;
+esac

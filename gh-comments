@@ -1,0 +1,51 @@
+#!/bin/bash
+# Display comments on an issue
+set -eu
+
+if [ $# -eq 0 ]; then
+  echo "usage: gh comments <issue-number>" >&2
+  exit 1
+fi
+
+if [ "${1:-}" = "__complete" ]; then
+  { gh issue list
+    gh pr list
+   } 2>/dev/null | while IFS=$'\t' read -r number title _; do
+    printf "%s\t%s\n" "$number" "$title"
+  done
+  exit 0
+fi
+
+issuenum="${1?}"
+cows=(default sheep koala moose tux bunny)
+
+gh api graphql -f query='
+query($owner: String!, $name: String!, $issue: Int!) {
+  repository(owner: $owner, name: $name) {
+    issueOrPullRequest(number: $issue) {
+      ...on Issue {
+        comments(last: 100) {
+          nodes {
+            author { login }
+            bodyText
+          }
+        }
+      }
+      ...on PullRequest {
+        comments(last: 100) {
+          nodes {
+            author { login }
+            bodyText
+          }
+        }
+      }
+    }
+  }
+}
+' -f owner="${GH_BASEREPO%/*}" -f name="${GH_BASEREPO#*/}" -F issue="$issuenum" | jq -r '
+  .data.repository.issueOrPullRequest.comments.nodes[] |
+  [.author.login, (.bodyText | gsub("\\s+";" "))] | join(" ")
+' | while read -r login message; do
+  cow="$(cowsay -W60 -f"${cows[$RANDOM % ${#cows[@]}]}" <<<"$message")"
+  printf "%s  @%s\n\n" "$cow" "$login"
+done

@@ -1,0 +1,55 @@
+#!/bin/bash
+# List CI statuses for a pull request
+set -eu
+
+if [ $# -eq 0 ]; then
+  echo "usage: gh ci-status <pr-number>" >&2
+  exit 1
+fi
+
+if [ "${1:-}" = "__complete" ]; then
+  gh pr list 2>/dev/null | while IFS=$'\t' read -r number title _; do
+    printf "%s\t%s\n" "$number" "$title"
+  done
+  exit 0
+fi
+
+prnum="${1?}"
+
+gh api graphql -H 'accept: application/vnd.github.antiope-preview+json' -f query='
+query($owner: String!, $name: String!, $pr: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $pr) {
+      headRef {
+        target {
+          ...on Commit {
+            statusCheckRollup {
+              state
+              contexts(first: 100) {
+                nodes {
+                  ...on CheckRun {
+                    name
+                    conclusion
+                    permalink
+                    status
+                  }
+                  ...on StatusContext {
+                    context
+                    state
+                    targetUrl
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+' -f owner="${GH_BASEREPO%/*}" -f name="${GH_BASEREPO#*/}" -F pr="$prnum" | jq -r '
+  .data.repository.pullRequest.headRef.target.statusCheckRollup | (
+    .state,
+    (.contexts.nodes[] | map_values(.) | join("\t"))
+  )
+' | column -t -s $'\t'
